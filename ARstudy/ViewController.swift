@@ -31,24 +31,29 @@ class ViewController: UIViewController {
         super.viewWillAppear(animated)
         
         // 세션 구성 생성
-        let configuration = ARImageTrackingConfiguration()
+//        let configuration = ARImageTrackingConfiguration()
+        let configuration = ARWorldTrackingConfiguration()
         
         // 사람 인식 활성화
         configuration.frameSemantics.insert(.personSegmentation)
         
-        // 메인 번들의 "Cards" 그룹에서 참조 이미지 로드
-        guard let referenceImages = ARReferenceImage.referenceImages(inGroupNamed: "Cards", bundle: Bundle.main) else {
-            fatalError("참조 이미지를 로드하는 데 실패했습니다.")
-        }
-        
-        // 추적할 참조 이미지 설정
-        configuration.trackingImages = referenceImages
-        
-        // 추적할 이미지의 최대 개수 설정
-        configuration.maximumNumberOfTrackedImages = 2
-        
         // 세션 실행
         sceneView.session.run(configuration)
+        
+        // ========== 이미지 인식 ==========
+        // 메인 번들의 "Cards" 그룹에서 참조 이미지 로드
+        if let referenceImages = ARReferenceImage.referenceImages(inGroupNamed: "Cards", bundle: Bundle.main){
+            let imageTrackingConfiguration = ARImageTrackingConfiguration()
+            imageTrackingConfiguration.trackingImages = referenceImages
+            
+            // 추적할 참조 이미지 설정
+            imageTrackingConfiguration.trackingImages = referenceImages
+
+            // 추적할 이미지의 최대 개수 설정
+            imageTrackingConfiguration.maximumNumberOfTrackedImages = 2
+        } else {
+            fatalError("참조 이미지를 로드하는 데 실패했습니다.")
+        }
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -72,32 +77,20 @@ class ViewController: UIViewController {
     }
     
     func makeAR() {
-        print("makeAR()")
-        // USDZ 파일 로드
-        guard let modelURL = Bundle.main.url(forResource: "Ghost", withExtension: "usdz"),
-              let model = try? SCNScene(url: modelURL, options: nil),
-              let modelNode = model.rootNode.childNodes.first else {
-            
-            // USDZ 모델을 로드하는 데 실패한 경우 에러 메시지 표시
-            let errorMessage = "USDZ 모델을 로드하는 데 실패했습니다."
-            let alert = UIAlertController(title: "에러", message: errorMessage, preferredStyle: .alert)
-            let okAction = UIAlertAction(title: "확인", style: .default, handler: nil)
-            alert.addAction(okAction)
-            present(alert, animated: true, completion: nil)
-            
-            return
-        }
-
-        // ARAnchor 생성
-        let anchor = ARAnchor(name: "LemonMeringuePie", transform: simd_float4x4())
+        let scene = SCNScene(named: "art.scnassets/LemonMeringuePie.scn")!
+        sceneView.scene = scene
         
-        // SceneView에서 앵커를 추가하고 모델 노드를 표시
-        sceneView.session.add(anchor: anchor)
-        sceneView.scene.rootNode.addChildNode(modelNode)
+        if let node = scene.rootNode.childNode(withName: "LemonMeringuePie", recursively: true){
+            node.position = SCNVector3(x:-0.2, y:0.2, z:0)
+            sceneView.scene.rootNode.addChildNode(node)
+            node.pivot = SCNMatrix4MakeScale(.pi / 2, 0, 1)//y축 주위로 90도 회전
+            
+            sceneView.scene.rootNode.addChildNode(node)
 
-        //자식노드로 makeNickName -> 닉네임이 머랭 따라다니게
-        modelNode.addChildNode(makeNickName())
-        addAnimation(node: modelNode)
+            //자식노드로 makeNickName -> 닉네임이 머랭 따라다니게
+            node.addChildNode(makeNickName())
+            addAnimation(node: node)
+        }
     }
 
     func makeNickName() -> SCNNode {
@@ -120,8 +113,11 @@ class ViewController: UIViewController {
     func addAnimation(node: SCNNode){
         //rotateBy 회전축
         let rotateOneTime = SCNAction.rotateBy(x: 0, y: 0.0, z: 0, duration: 5)
-        //계속 돌아라
-        let actionForever = SCNAction.repeatForever(rotateOneTime)
+        let moveUp = SCNAction.moveBy(x: 0, y: 0.2, z: 0, duration: 2.5)
+        let moveDown = SCNAction.moveBy(x: 0, y: -0.2, z: 0, duration: 2.5)
+        let moveSequence = SCNAction.sequence([moveUp, moveDown])
+        let rotateAndMove = SCNAction.group([rotateOneTime, moveSequence])
+        let actionForever = SCNAction.repeatForever(rotateAndMove)
         
         node.runAction(actionForever)
     }
@@ -134,6 +130,7 @@ extension ViewController: ARSCNViewDelegate {
     func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
         // 빈 노드를 생성시킵니다.
         let node = SCNNode()
+        print("renderer()")
         
         // 이미지를 추적해야 하므로 감지된 anchor를 ARImageAnchor로 형변환을 시켜줍니다.
         // 또한 imageAnchor.referenceImage.name로 접근하여 지금 인식되고 있는 사진의 이름도 알 수 있습니다.
@@ -151,6 +148,7 @@ extension ViewController: ARSCNViewDelegate {
         return node
     }
     func detectCard(at imageAnchor: ARImageAnchor) -> SCNNode {
+        print("detectCard()")
         // 카드를 인식해야 하므로 감지된 카드의 크기를 입력해 준다.(하드코딩 할 필요 X)
         // 카드위에 3D객체 형상(plane)을 렌더링을 시킨다.
         let plane = SCNPlane(width: imageAnchor.referenceImage.physicalSize.width,
@@ -169,6 +167,7 @@ extension ViewController: ARSCNViewDelegate {
         return planeNode
     }
     func makeModel(on planeNode: SCNNode, name: String) {
+        print("makeModel()")
         switch name {
         case Card.Ghost.name:
             guard let ghostScene = SCNScene(named: Card.Ghost.assetLocation) else { return }
